@@ -454,6 +454,11 @@ def verify_integrity_page():
     )
     return render_template('verify_integrity.html', signed_files=signed_files, user=u)
 
+@app.route("/")
+def home():
+    return "Flask app running!", 200
+
+
 # -------------------------
 # Main
 # -------------------------
@@ -461,3 +466,4 @@ if __name__ == '__main__':
     # Make sure your Atlas "Network Access" allows your IP,
     # and that the DB user dilli/dilli exists with proper roles.
     app.run(debug=True, host='127.0.0.1', port=5000)
+
