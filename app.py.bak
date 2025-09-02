@@ -1,0 +1,242 @@
+import os
+import hashlib
+from datetime import datetime
+from flask import Flask, render_template, request, redirect, url_for, flash, session, send_from_directory
+from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash, check_password_hash
+import bson
+from backend import signer
+from pymongo.mongo_client import MongoClient
+from pymongo.server_api import ServerApi
+
+# --- Flask Config ---
+app = Flask(__name__)
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev-change-me')
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB
+ALLOWED_EXTS = {'.exe', '.zip', '.tar', '.gz', '.jar', '.py', '.txt', '.pdf'}
+
+# --- MongoDB ---
+MONGO_URI = os.environ.get(
+    'MONGO_URI',
+    'mongodb+srv://portal_user:strongpassword123@cluster0.dmapwyz.mongodb.net/code_signing_portal?retryWrites=true&w=majority&appName=Cluster0'
+)
+try:
+    client = MongoClient(MONGO_URI, server_api=ServerApi('1'))
+    client.admin.command('ping')
+    print("✅ Connected to MongoDB successfully!")
+except Exception as e:
+    print("❌ MongoDB connection failed:", e)
+    exit(1)
+
+db = client.get_database('code_signing_portal')
+users = db.users
+files_col = db.files
+certs_col = db.certs
+logs_col = db.logs
+
+# --- Directories ---
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_DIR = os.path.join(APP_DIR, 'uploads')
+CERTS_DIR = os.path.join(APP_DIR, 'backend', 'certs')
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(CERTS_DIR, exist_ok=True)
+
+# --- Default Admin ---
+if not users.find_one({'username': 'admin'}):
+    users.insert_one({
+        'username': 'admin',
+        'password_hash': generate_password_hash('admin'),
+        'role': 'admin',
+        'created_at': datetime.utcnow().isoformat()
+    })
+    print('Default admin created: admin/admin')
+
+# --- Helper Functions ---
+def compute_sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+def current_user():
+    uname = session.get('username')
+    if not uname:
+        return None
+    return users.find_one({'username': uname})
+
+def login_required(fn):
+    from functools import wraps
+    @wraps(fn)
+    def wrapper(*a, **k):
+        u = current_user()
+        if not u:
+            flash('Please log in first.')
+            return redirect(url_for('login'))
+        return fn(*a, **k)
+    return wrapper
+
+def admin_required(fn):
+    from functools import wraps
+    @wraps(fn)
+    def wrapper(*a, **k):
+        u = current_user()
+        if not u or u.get('role') != 'admin':
+            flash('Admin access required.')
+            return redirect(url_for('index'))
+        return fn(*a, **k)
+    return wrapper
+
+def allowed_file_ext(filename):
+    _, ext = os.path.splitext(filename)
+    return ext.lower() in ALLOWED_EXTS
+
+# --- Routes ---
+@app.route('/')
+def index():
+    u = current_user()
+    has_cert = certs_col.count_documents({}) > 0
+    return render_template('index.html', has_cert=has_cert, user=u)
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        uname = request.form.get('username'); pwd = request.form.get('password')
+        u = users.find_one({'username': uname})
+        if u and check_password_hash(u['password_hash'], pwd):
+            session['username'] = uname
+            flash('Logged in')
+            return redirect(url_for('index'))
+        flash('Invalid credentials')
+    return render_template('login.html', user=current_user())
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    flash('Logged out')
+    return redirect(url_for('index'))
+
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    if request.method == 'POST':
+        uname = request.form.get('username')
+        pwd = request.form.get('password')
+        pwd2 = request.form.get('password2')
+        if not uname or not pwd or not pwd2:
+            flash('All fields are required')
+            return redirect(url_for('signup'))
+        if pwd != pwd2:
+            flash('Passwords do not match')
+            return redirect(url_for('signup'))
+        if users.find_one({'username': uname}):
+            flash('Username already exists')
+            return redirect(url_for('signup'))
+        users.insert_one({
+            'username': uname,
+            'password_hash': generate_password_hash(pwd),
+            'role': 'user',
+            'created_at': datetime.utcnow().isoformat()
+        })
+        flash('Signup successful! Please login.')
+        return redirect(url_for('login'))
+    return render_template('signup.html', user=current_user())
+
+# --- Certificates ---
+@app.route('/certs')
+@login_required
+def certs():
+    u = current_user()
+    certs = list(certs_col.find({})) if u.get('role') == 'admin' else list(certs_col.find({'created_by': u['username']}))
+    return render_template('certs.html', certs=certs, user=u)
+
+@app.route('/certs/generate', methods=['POST'])
+@login_required
+def certs_generate():
+    u = current_user()
+    body = {
+        'C': request.form.get('C', 'IN'),
+        'ST': request.form.get('ST', 'State'),
+        'L': request.form.get('L', 'City'),
+        'O': request.form.get('O', 'MyCompany'),
+        'OU': request.form.get('OU', ''),
+        'CN': request.form.get('CN', 'MyCompany'),
+        'days': int(request.form.get('days', 730))
+    }
+    pfx_password = request.form.get('pfx_password', '')
+    if not pfx_password:
+        flash('PFX password required')
+        return redirect(url_for('certs'))
+    ok, res = signer.generate_self_signed(body, pfx_password)
+    if not ok:
+        flash('Cert generation failed: ' + str(res))
+        return redirect(url_for('certs'))
+    doc = {
+        'cn': body['CN'],
+        'meta': body,
+        'pfx_path': res['pfx_path'],
+        'crt_path': res['crt_path'],
+        'valid_from': res['valid_from'],
+        'valid_to': res['valid_to'],
+        'created_by': u['username'],
+        'created_at': res.get('created_at', datetime.utcnow().isoformat())
+    }
+    certs_col.insert_one(doc)
+    logs_col.insert_one({'username': u['username'], 'action': 'generate_cert', 'cert_cn': body['CN'], 'timestamp': datetime.utcnow().isoformat()})
+    flash('Certificate generated')
+    return redirect(url_for('certs'))
+
+@app.route('/files')
+@login_required
+def files_page():
+    u = current_user()
+    uploaded = list(files_col.find({}).sort('uploaded_at', -1)) if u.get('role') == 'admin' else list(files_col.find({'uploader': u['username']}).sort('uploaded_at', -1))
+    certs_list = list(certs_col.find({})) if u.get('role') == 'admin' else list(certs_col.find({'created_by': u['username']}))
+    return render_template('files.html', files=uploaded, certs=certs_list, user=u)
+
+@app.route('/files/upload', methods=['POST'])
+@login_required
+def files_upload():
+    u = current_user()
+    filesx = request.files.getlist('files'); saved = []
+    for f in filesx:
+        if not f or f.filename == '':
+            continue
+        filename = secure_filename(f.filename)
+        if not allowed_file_ext(filename):
+            flash(f'Skipping disallowed file type: {filename}')
+            continue
+        dest = os.path.join(UPLOAD_DIR, filename)
+        if os.path.exists(dest):
+            base, ext = os.path.splitext(filename)
+            filename = f"{base}_{int(datetime.utcnow().timestamp())}{ext}"
+            dest = os.path.join(UPLOAD_DIR, filename)
+        f.save(dest)
+        checksum_orig = compute_sha256(dest)
+        files_col.insert_one({'filename': filename, 'uploader': u['username'], 'status': 'uploaded', 'uploaded_at': datetime.utcnow().isoformat(), 'checksum_original': checksum_orig})
+        logs_col.insert_one({'username': u['username'], 'action': 'upload', 'filename': filename, 'timestamp': datetime.utcnow().isoformat()})
+        saved.append(filename)
+    flash('Uploaded: ' + ', '.join(saved) if saved else 'No files uploaded')
+    return redirect(url_for('files_page'))
+
+@app.route('/uploads/<path:filename>')
+@login_required
+def download_upload(filename):
+    u = current_user()
+    if u.get('role') != 'admin':
+        file_doc = files_col.find_one({'filename': filename})
+        if not file_doc or file_doc.get('uploader') != u['username']:
+            flash('You can only download files you uploaded')
+            return redirect(url_for('files_page'))
+    return send_from_directory(UPLOAD_DIR, filename, as_attachment=True)
+
+# --- Verify Integrity Page ---
+@app.route('/verify', methods=['GET'])
+@login_required
+def verify_integrity_page():
+    u = current_user()
+    signed_files = list(files_col.find({'status': 'signed'}) if u.get('role') == 'admin' else files_col.find({'uploader': u['username'], 'status': 'signed'}))
+    return render_template('verify_integrity.html', files=signed_files, user=u)
+
+# --- Main ---
+if __name__ == '__main__':
+    app.run(debug=True, host='127.0.0.1', port=5000)
