@@ -1,0 +1,99 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <div class="card p-4 shadow-sm">
+      <h4 class="fw-bold mb-3 text-center">Sign Up</h4>
+      <form method="post">
+        <!-- Username -->
+        <div class="mb-3">
+          <label class="form-label">Username</label>
+          <input class="form-control" name="username" required>
+        </div>
+
+        <!-- Email -->
+        <div class="mb-3">
+          <label class="form-label">Email</label>
+          <input class="form-control" name="email" type="email" required>
+        </div>
+
+        <!-- Bootstrap Icons -->
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+
+        <!-- Password -->
+        <div class="mb-3">
+          <label class="form-label">Password</label>
+          <div class="position-relative">
+            <input class="form-control pe-5" name="password" type="password" id="signupPassword" required>
+            <i class="bi bi-eye position-absolute top-50 end-0 translate-middle-y me-3"
+               id="toggleSignupPassword" style="cursor: pointer;"></i>
+          </div>
+          <small class="text-muted">
+            Password must be at least 8 characters long and include:
+            uppercase, lowercase, number, and special character.
+          </small>
+          <div id="passwordFeedback" class="form-text text-danger"></div>
+        </div>
+
+        <!-- Confirm Password -->
+        <div class="mb-3">
+          <label class="form-label">Confirm Password</label>
+          <div class="position-relative">
+            <input class="form-control pe-5" name="confirm_password" type="password" id="signupConfirmPassword" required>
+            <i class="bi bi-eye position-absolute top-50 end-0 translate-middle-y me-3"
+               id="toggleSignupConfirmPassword" style="cursor: pointer;"></i>
+          </div>
+          <div id="confirmFeedback" class="form-text text-danger"></div>
+        </div>
+
+        <button class="btn btn-dark w-100">Sign Up</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Show/Hide toggle
+  function togglePassword(inputId, iconId) {
+    const input = document.getElementById(inputId);
+    const icon = document.getElementById(iconId);
+    icon.addEventListener("click", function () {
+      const type = input.getAttribute("type") === "password" ? "text" : "password";
+      input.setAttribute("type", type);
+      this.classList.toggle("bi-eye");
+      this.classList.toggle("bi-eye-slash");
+    });
+  }
+
+  togglePassword("signupPassword", "toggleSignupPassword");
+  togglePassword("signupConfirmPassword", "toggleSignupConfirmPassword");
+
+  // ✅ Live password validation
+  const passwordInput = document.getElementById("signupPassword");
+  const confirmInput = document.getElementById("signupConfirmPassword");
+  const passwordFeedback = document.getElementById("passwordFeedback");
+  const confirmFeedback = document.getElementById("confirmFeedback");
+
+  function validatePassword() {
+    const pwd = passwordInput.value;
+    const strongRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
+
+    if (pwd && !strongRegex.test(pwd)) {
+      passwordFeedback.textContent = "❌ Weak password";
+    } else {
+      passwordFeedback.textContent = "";
+    }
+  }
+
+  function validateConfirm() {
+    if (confirmInput.value && passwordInput.value !== confirmInput.value) {
+      confirmFeedback.textContent = "❌ Passwords do not match";
+    } else {
+      confirmFeedback.textContent = "";
+    }
+  }
+
+  passwordInput.addEventListener("input", validatePassword);
+  confirmInput.addEventListener("input", validateConfirm);
+</script>
+{% endblock %}

@@ -1,0 +1,10 @@
+body { background:#f6f8fb; } .card { border: 0; } .alert pre { margin: 0; background: transparent; }
+.navbar {
+  padding-top: 1rem;   /* increase vertical padding */
+  padding-bottom: 1rem;
+  font-size: 1.05rem;  /* slightly larger text */
+}
+
+.navbar .nav-link {
+  padding: 0.75rem 1rem; /* more space around links */
+}

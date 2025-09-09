@@ -1,0 +1,60 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<!-- Hero Header -->
+<div class="p-4 mb-4 rounded-3 bg-light border shadow-sm">
+  <h2 class="fw-bold mb-1">Verify File Integrity</h2>
+  <p class="text-muted mb-0">Ensure your files haven’t been tampered with by comparing checksums</p>
+</div>
+
+<!-- Collapsible Info Card -->
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center" 
+       data-bs-toggle="collapse" data-bs-target="#integrity-info" style="cursor:pointer;">
+    <h5 class="mb-0 fw-semibold">What is File Integrity?</h5>
+    <span class="text-muted small">(Click to expand)</span>
+  </div>
+  <div id="integrity-info" class="collapse">
+    <div class="card-body">
+      <p class="mb-0">
+        File integrity ensures that a file has not been modified after it was signed.
+        SHA-256 checksums are calculated for the original uploaded file and after signing.
+        By comparing these checksums, you can verify whether a file has been altered.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- Compare Local File -->
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-body">
+    <h5 class="fw-semibold mb-3">Compare a Local File Against Signed File</h5>
+    <form action="{{ url_for('files_compare') }}" method="post" enctype="multipart/form-data">
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Select Local File</label>
+        <input class="form-control" type="file" name="local_file" required>
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Select Signed File</label>
+        <select name="signed_filename" class="form-select" required>
+          {% for f in signed_files %}
+            <option value="{{ f.filename }}">{{ f.filename }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn btn-dark">Compare Checksums</button>
+    </form>
+  </div>
+</div>
+
+<!-- Result -->
+{% if comparison_result %}
+<div class="card shadow-sm border-0">
+  <div class="card-body">
+    <h5 class="fw-semibold mb-3">Comparison Result</h5>
+    <p class="mb-0">{{ comparison_result }}</p>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

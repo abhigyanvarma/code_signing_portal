@@ -1,0 +1,18 @@
+[ req ]
+distinguished_name = req_distinguished_name
+x509_extensions = v3_req
+prompt = no
+default_md = sha256
+
+[ req_distinguished_name ]
+C = IN
+ST = Andhra Pradesh
+L = Amalapuram
+O = ab
+OU = ab
+CN = ab
+
+[ v3_req ]
+basicConstraints = CA:FALSE
+keyUsage = digitalSignature
+extendedKeyUsage = codeSigning

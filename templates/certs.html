@@ -1,0 +1,135 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h3 class="fw-bold" id="cert">Certificates</h3>
+</div>
+
+<!-- Generate Self-Signed Certificate -->
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-body">
+    <h5 class="fw-semibold mb-3">Generate Self-Signed Certificate (Admin)</h5>
+    <form method="post" action="{{ url_for('certs_generate') }}">
+      
+      <!-- CN + O -->
+      <div class="row g-2">
+        <div class="col">
+          <input class="form-control" name="CN" placeholder="Common Name (CN) " required>
+        </div>
+        <div class="col">
+          <input class="form-control" name="O" placeholder="Organization Name (O)" required>
+        </div>
+      </div>
+
+      <!-- OU + C -->
+      <div class="row g-2 mt-2">
+        <div class="col">
+          <input class="form-control" name="OU" placeholder="Organizational Unit (OU)">
+        </div>
+        <div class="col">
+          <input class="form-control" name="C" placeholder="Country (C): 2-letter code (e.g., IN, US)" maxlength="2" required>
+        </div>
+      </div>
+
+      <!-- ST + L -->
+      <div class="row g-2 mt-2">
+        <div class="col">
+          <input class="form-control" name="ST" placeholder="State/Province (ST): full name " required>
+        </div>
+        <div class="col">
+          <input class="form-control" name="L" placeholder="Locality (L): city " required>
+        </div>
+      </div>
+
+      <!-- Days + Algo + PFX -->
+      <div class="row g-2 mt-2">
+        <div class="col-md-3">
+          <input class="form-control" name="days" placeholder="Validity days" value="730" type="number" required>
+        </div>
+        <div class="col-md-3">
+          <select class="form-select" name="algo" required>
+            <option value="RSA" selected>RSA (default)</option>
+            <option value="ECDSA">ECDSA (P-256)</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <!-- PFX password with eye toggle -->
+          <div class="position-relative">
+            <input class="form-control pe-5" name="pfx_password" type="password" 
+                   id="pfxPassword" placeholder="PFX password" required>
+            <i class="bi bi-eye position-absolute top-50 end-0 translate-middle-y me-3"
+               id="togglePfxPassword" style="cursor: pointer;"></i>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <button class="btn btn-dark w-100">Generate</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Bootstrap Icons -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+
+<!-- Certificates Table -->
+<div class="card shadow-sm border-0">
+  <div class="card-body">
+    <h5 class="fw-semibold mb-3">Available Certificates</h5>
+    {% if certs %}
+      <div class="table-responsive">
+        <table class="table align-middle table-hover">
+          <thead class="table-light">
+            <tr>
+              <th>CN</th>
+              <th>Algorithm</th>
+              <th>Valid From</th>
+              <th>Valid To</th>
+              <th>Created By</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in certs %}
+            <tr>
+              <td>{{ c.cn }}</td>
+              <td>{{ c.algo or 'RSA' }}</td>
+              <td>{{ c.valid_from }}</td>
+              <td>{{ c.valid_to }}</td>
+              <td>{{ c.created_by }}</td>
+              <td class="text-end">
+                <div class="btn-group btn-group-sm">
+                  <a class="btn btn-outline-dark"
+                     href="{{ url_for('certs_download', id=c._id, kind='crt') }}">Download</a>
+                  <a class="btn btn-outline-secondary"
+                     href="{{ url_for('certs_download', id=c._id, kind='pfx') }}">PFX</a>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="text-muted">No certificates available.</p>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Password toggle script -->
+<script>
+  function togglePassword(inputId, iconId) {
+    const input = document.getElementById(inputId);
+    const icon = document.getElementById(iconId);
+    icon.addEventListener("click", function () {
+      const type = input.getAttribute("type") === "password" ? "text" : "password";
+      input.setAttribute("type", type);
+      this.classList.toggle("bi-eye");
+      this.classList.toggle("bi-eye-slash");
+    });
+  }
+
+  togglePassword("pfxPassword", "togglePfxPassword");
+</script>
+
+{% endblock %}
